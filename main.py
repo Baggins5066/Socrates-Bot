@@ -3,6 +3,16 @@ import schedule
 import time
 import random
 import requests
+import logging
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Set up logging
+logging.basicConfig(
+    filename='quote_bot.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Twitter API credentials
 API_KEY = "your_api_key"
@@ -20,34 +30,44 @@ client = tweepy.Client(
     access_token_secret=ACCESS_TOKEN_SECRET
 )
 
+# Set up requests session with retries
+session = requests.Session()
+retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+session.mount('https://', HTTPAdapter(max_retries=retries))
+
 # Load quotes from Quotable API
 def load_quotes():
     url = "https://api.quotable.io/random"
     try:
-        response = requests.get(url)
+        response = session.get(url, timeout=10)
         response.raise_for_status()
+        logging.info("Successfully fetched quote from Quotable API")
         return [response.json()]  # Wrap single quote in a list for compatibility
-    except Exception as e:
-        print(f"Error loading quotes: {e}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to load quotes: {e}")
         return None
 
 def post_philosophy_quote():
     quotes = load_quotes()
     if not quotes:
-        print("No quotes loaded, skipping post.")
+        logging.warning("No quotes loaded, skipping post.")
         return
     quote = random.choice(quotes)
     post_text = f"{quote['content']} - {quote['author']}"
     try:
         client.create_tweet(text=post_text[:280])  # Ensure within X's 280-char limit
-        print(f"Posted: {post_text}")
-    except Exception as e:
-        print(f"Error posting to X: {e}")
+        logging.info(f"Posted: {post_text}")
+    except tweepy.TweepyException as e:
+        logging.error(f"Error posting to X: {e}")
 
 # Schedule daily post at 9:00 AM
 schedule.every().day.at("09:00").do(post_philosophy_quote)
 
 # Run scheduler
 while True:
-    schedule.run_pending()
-    time.sleep(60)
+    try:
+        schedule.run_pending()
+        time.sleep(60)
+    except Exception as e:
+        logging.error(f"Scheduler error: {e}")
+        time.sleep(60)  # Continue loop even if scheduler fails
