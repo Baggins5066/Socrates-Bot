@@ -2,7 +2,6 @@ import tweepy
 import schedule
 import time
 import random
-import json
 import requests
 
 # Twitter API credentials
@@ -21,13 +20,13 @@ client = tweepy.Client(
     access_token_secret=ACCESS_TOKEN_SECRET
 )
 
-# Load quotes from a JSON file or URL
+# Load quotes from Quotable API
 def load_quotes():
-    url = "https://philosophy-quotes-api.example.com/quotes.json"  # Replace with actual URL or local file path
+    url = "https://api.quotable.io/random"
     try:
         response = requests.get(url)
         response.raise_for_status()
-        return response.json()
+        return [response.json()]  # Wrap single quote in a list for compatibility
     except Exception as e:
         print(f"Error loading quotes: {e}")
         return None
@@ -38,7 +37,7 @@ def post_philosophy_quote():
         print("No quotes loaded, skipping post.")
         return
     quote = random.choice(quotes)
-    post_text = f"{quote['text']} - {quote['author']}"
+    post_text = f"{quote['content']} - {quote['author']}"
     try:
         client.create_tweet(text=post_text[:280])  # Ensure within X's 280-char limit
         print(f"Posted: {post_text}")
